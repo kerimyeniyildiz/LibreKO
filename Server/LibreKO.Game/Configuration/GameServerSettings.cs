@@ -33,6 +33,7 @@ public class GameServerSettings
     public PartyVoteSettings PartyVote { get; set; } = new();
     public JackpotSettings Jackpot { get; set; } = new();
     public ChatRoomSettings ChatRooms { get; set; } = new();
+    public TimeWeatherSettings TimeWeather { get; set; } = new();
 
     public PublicDemoSettings PublicDemo { get; set; } = new();
 
@@ -117,6 +118,12 @@ public class JackpotSettings
 {
     public int[] ExpRates { get; set; } = [1100, 200, 50, 25, 10, 5];
     public int[] CoinRates { get; set; } = [1100, 200, 50, 25, 10, 5];
+}
+
+public class TimeWeatherSettings
+{
+    public string FixedTimeOfDay { get; set; } = string.Empty;
+    public string FixedWeather { get; set; } = string.Empty;
 }
 
 public class ChatRoomSettings

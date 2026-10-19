@@ -3,12 +3,15 @@ using LibreKO.Common.Infrastructure.Network;
 using LibreKO.Common.Gameplay;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using LibreKO.Game.Configuration;
 using LibreKO.Game.Protocol.Writers;
+using Microsoft.Extensions.Options;
 
 namespace LibreKO.Game.World;
 
 public class TimeWeatherBroadcastService(
     SessionManager sessionManager,
+    IOptions<GameServerSettings> settings,
     ILogger<TimeWeatherBroadcastService> logger) : BackgroundService
 {
     private const int MinutesPerHour = 60;
@@ -22,6 +25,7 @@ public class TimeWeatherBroadcastService(
     private const int RainChance = 7;
     private const int LeafChance = 12;
     private const int FineAmountFloor = 70;
+    private const ushort FixedWeatherAmount = 0;
 
     // A full in-game day/night cycle takes this many REAL seconds (4 hours), so game time runs 6x.
     public const int DayCycleSeconds = 4 * 3600;
@@ -30,11 +34,15 @@ public class TimeWeatherBroadcastService(
     private const int TimeIntervalSeconds = 10;     // frequent enough that clients sync fast + interpolate
     private const int WeatherIntervalSeconds = 3600;
 
+    private readonly int? fixedMinuteOfDay = ParseFixedTimeOfDay(settings.Value.TimeWeather.FixedTimeOfDay);
+    private readonly Common.Enums.WeatherType? fixedWeather = ParseFixedWeather(settings.Value.TimeWeather.FixedWeather);
+
     private int minuteOffset;
 
-    public int MinuteOfDay => Wrap(EpochMinuteOfDay + minuteOffset);
+    public int MinuteOfDay => Wrap(BaseMinuteOfDay + minuteOffset);
 
-    public byte WeatherType { get; set; } = WeatherFine;
+    public byte WeatherType { get; set; } =
+        (byte)(ParseFixedWeather(settings.Value.TimeWeather.FixedWeather) ?? Common.Enums.WeatherType.Fine);
     public ushort WeatherAmount { get; set; }
     // GM event-rate bonuses (server-wide, percent). Applied multiplicatively on top of base.
     public byte ExpEventAmount { get; set; }
@@ -59,8 +67,11 @@ public class TimeWeatherBroadcastService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Time/Weather broadcast service started (time {TimeSec}s, weather {WeatherSec}s)",
-            TimeIntervalSeconds, WeatherIntervalSeconds);
+        logger.LogInformation(
+            "Time/Weather broadcast service started (time {TimeSec}s, weather {WeatherSec}s, fixed time {FixedTime}, fixed weather {FixedWeather})",
+            TimeIntervalSeconds, WeatherIntervalSeconds,
+            fixedMinuteOfDay is { } fixedMinute ? $"{fixedMinute / MinutesPerHour:D2}:{fixedMinute % MinutesPerHour:D2}" : "off",
+            fixedWeather?.ToString() ?? "off");
 
         var timeTask = RunTimeLoop(stoppingToken);
         var weatherTask = RunWeatherLoop(stoppingToken);
@@ -91,7 +102,7 @@ public class TimeWeatherBroadcastService(
         {
             try
             {
-                RollWeather();
+                RefreshWeather();
                 if (sessionManager.OnlineCount == 0) continue;
                 await BroadcastWeatherAsync();
                 if (SantaOrAngel != 0)
@@ -107,7 +118,7 @@ public class TimeWeatherBroadcastService(
     public Packet BuildCurrentTimePacket() => BuildTimePacket(MinuteOfDay);
 
     public void SetTimeOfDay(int hour, int minute) =>
-        minuteOffset = Wrap(hour * 60 + minute - EpochMinuteOfDay);
+        minuteOffset = Wrap(hour * MinutesPerHour + minute - BaseMinuteOfDay);
 
     public void ResetTimeOfDay() => minuteOffset = 0;
 
@@ -143,7 +154,33 @@ public class TimeWeatherBroadcastService(
     private static int EpochMinuteOfDay =>
         (int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() % DayCycleSeconds * MinutesPerDay / DayCycleSeconds);
 
+    private int BaseMinuteOfDay => fixedMinuteOfDay ?? EpochMinuteOfDay;
+
     private static int Wrap(int minutes) => (minutes % MinutesPerDay + MinutesPerDay) % MinutesPerDay;
+
+    private static int? ParseFixedTimeOfDay(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return null;
+        if (!TryParseTimeOfDay(text, out var hour, out var minute))
+            throw new InvalidOperationException(
+                $"{SettingName(nameof(TimeWeatherSettings.FixedTimeOfDay))} must be a time of day such as 12:00, not '{text}'");
+        return hour * MinutesPerHour + minute;
+    }
+
+    private static Common.Enums.WeatherType? ParseFixedWeather(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return null;
+        var names = Enum.GetNames<Common.Enums.WeatherType>();
+        if (!names.Contains(text, StringComparer.Ordinal))
+            throw new InvalidOperationException(
+                $"{SettingName(nameof(TimeWeatherSettings.FixedWeather))} must be one of {string.Join(", ", names)}, not '{text}'");
+        return Enum.Parse<Common.Enums.WeatherType>(text);
+    }
+
+    private static string SettingName(string key) =>
+        $"{GameServerSettings.SectionName}:{nameof(GameServerSettings.TimeWeather)}:{key}";
 
     private static Packet BuildTimePacket(int minuteOfDay)
     {
@@ -158,6 +195,14 @@ public class TimeWeatherBroadcastService(
     {
         var pkt = TimeWeatherPacketWriter.Weather(type, amount);
         return pkt;
+    }
+
+    internal void RefreshWeather()
+    {
+        if (fixedWeather is { } held)
+            TrySetWeather((byte)held, FixedWeatherAmount);
+        else
+            RollWeather();
     }
 
     private void RollWeather()

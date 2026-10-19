@@ -84,6 +84,7 @@ public class StarterSeedQuestTests
         var combatRewardLogger = Substitute.For<ILogger<CombatRewardService>>();
         var timeWeather = new TimeWeatherBroadcastService(
             sessionManager,
+            Options.Create(new GameServerSettings()),
             Substitute.For<ILogger<TimeWeatherBroadcastService>>());
 
         var service = new CombatRewardService(

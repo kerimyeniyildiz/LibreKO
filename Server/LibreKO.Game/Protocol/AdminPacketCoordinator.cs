@@ -1080,7 +1080,8 @@ public class AdminPacketCoordinator(
             timeWeather.ResetTimeOfDay();
             scheduleClock.Reset();
             await BroadcastTimeAsync();
-            await SendNoticeAsync(session, "Game time and event clock are back to the real time.");
+            await SendNoticeAsync(session,
+                $"Game time is back to {timeWeather.MinuteOfDay / 60:00}:{timeWeather.MinuteOfDay % 60:00}, the event clock to the real time.");
             logger.LogInformation("GM {Gm} reset the game time and the event clock", session.Name);
             return;
         }

@@ -1,9 +1,11 @@
 using FluentAssertions;
 using LibreKO.Common.Infrastructure.Network;
 using LibreKO.Common.Domain.Services;
+using LibreKO.Game.Configuration;
 using LibreKO.Game.Protocol.Writers;
 using LibreKO.Game.World;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 
 namespace LibreKO.Game.Tests;
@@ -63,7 +65,10 @@ public class NoticeTests
     {
         var data = Substitute.For<IGameDataService>();
         data.GetServerResource(RateEvents.ResourceId(RateEvent.Exp)).Returns("Earn %d percent extra EXP.");
-        var rates = new TimeWeatherBroadcastService(new SessionManager(), Substitute.For<ILogger<TimeWeatherBroadcastService>>())
+        var rates = new TimeWeatherBroadcastService(
+            new SessionManager(),
+            Options.Create(new GameServerSettings()),
+            Substitute.For<ILogger<TimeWeatherBroadcastService>>())
         {
             ExpEventAmount = 50,
         };

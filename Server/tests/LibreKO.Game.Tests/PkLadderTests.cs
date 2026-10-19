@@ -2,11 +2,13 @@
 using LibreKO.Common.Domain.Services;
 using LibreKO.Common.Enums;
 using LibreKO.Common.Infrastructure.Network;
+using LibreKO.Game.Configuration;
 using LibreKO.Game.Protocol;
 using LibreKO.Game.Protocol.Writers;
 using LibreKO.Game.World;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 
 namespace LibreKO.Game.Tests;
@@ -56,7 +58,10 @@ public class PkLadderTests : GameTestBase
         gameData.GetPremiumProperty(PremiumWithLoyalty, PremiumPropertyType.Loyalty).Returns(PremiumLoyalty);
         var sessions = new SessionManager();
         var loyalty = new LoyaltyService(
-            new TimeWeatherBroadcastService(sessions, Substitute.For<ILogger<TimeWeatherBroadcastService>>()),
+            new TimeWeatherBroadcastService(
+                sessions,
+                Options.Create(new GameServerSettings()),
+                Substitute.For<ILogger<TimeWeatherBroadcastService>>()),
             gameData,
             sessions,
             Substitute.For<IClanStandingService>(),
